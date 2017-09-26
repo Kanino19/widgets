@@ -1,15 +1,18 @@
-from bokeh.plotting import figure, output_file,show
-#from bokeh.io import output_file, show
-from bokeh.layouts import widgetbox
-from bokeh.models.widgets import Select
+#interactive_plotting.py
+#bokeh serve --show interactive_plotting.py
+
+from bokeh.layouts import row, widgetbox
+from bokeh.models import Select
+from bokeh.palettes import Spectral5
+from bokeh.plotting import curdoc, figure
 
 import numpy as np
 import csv
 import os
 
-
-
 def all_names():
+	name_folder = input("name folder ?: ")
+	os.chdir("./"+name_folder)
 	all_file = os.listdir()
 	name_mu = 'SALib_mu_'
 	name_si = 'SALib_sigma_'
@@ -27,12 +30,13 @@ def all_names():
 	names_si = list(np.extract(position_si,all_file))
 	return names_mu, names_si, tr
 
-def all_parametres():
+
+def all_parameters():
 	problem = {
     	'num_vars'  : 0,
     	'names'     : [],
 	}
-	file="parametres_Info.txt"
+	file="parameters_Info.txt"
 	RAW= csv.reader(open(file, "r"), delimiter='\t')
 	pass1=1
 	for line in RAW:
@@ -43,26 +47,51 @@ def all_parametres():
 		problem['names'].append(line[0])
 	return problem
 
-def plot_comparation():
-	for i in range(K):											#Parametres loop
-		for j in range(2,tr,2):										#Trajectories loop
-			po = int((j/2)-1)
-			mu = np.loadtxt(names_mu[po])						#Import mu data
-			si = np.loadtxt(names_si[po])						#Import sigma data
-			if tr == 2:											#Plot for each function
-				a[i].plot(j, mu[1,i], "^r", label = 'mu')
-				a[i].plot(j, si[1,i], "ob", label = 'sigma')
-			else :
-				a[i].plot(j, mu[1,i], "^r")
-				a[i].plot(j, si[1,i], "ob")
 
-p_output=['C_do','C_cbod','C_p','C_NH4','C_NO3','C_on','C_ip','C_op','C_chl']
-
-problem = all_parametres()
+def all_data():
+	n = int(tr/2 -1)
+	mu = np.array([list(np.loadtxt(names_mu[a])) for a in range(n)])
+	si = np.array([list(np.loadtxt(names_si[b])) for b in range(n)])
+	return mu,si
 
 
-name_folder = input("name folder ?: ")
-os.chdir("./"+name_folder)
+def create_figure():
+	n_fun = p_output.index(s_fun.value)
+	n_par = problem['names'].index(s_par.value)
+
+	Tr = np.arange(2,tr,2)
+	mus = mu[:,n_fun,n_par] 
+	sis = si[:,n_fun,n_par]
+
+	x_title = s_fun.value.title()
+	y_title = s_par.value.title()
+
+
+	kw = dict()
+	#kw['x_range'] = sorted(set(Tr))
+	kw['title'] = "%s vs %s" % ('Trajectories', 'mu/sigma')
+
+	p = figure(plot_height=600, plot_width=800, tools='pan,box_zoom,reset', **kw)
+	p.xaxis.axis_label = 'Trajectories'
+	p.yaxis.axis_label = 'mu/sigma'
+
+	sz = 9
+	c = "#31AADE"
+	p.line(x=Tr,y=mus,color='blue',legend='Mu')
+	p.line(x=Tr,y=sis,color='red',legend='Sigma')
+	p.circle(x=Tr, y=mus, color='blue', size=sz, line_color="blue",\
+		alpha=0.6, hover_color='white', hover_alpha=0.5, legend='Mu')
+	p.circle(x=Tr, y=sis, color='red', size=sz, line_color="red",\
+		alpha=0.6, hover_color='white', hover_alpha=0.5, legend='Sigma')
+	return p
+
+
+def update(attr, old, new):
+	layout.children[1] = create_figure()
+
+
+p_output = ['C_do','C_cbod','C_p','C_NH4','C_NO3','C_on','C_ip','C_op']
+problem  = all_parameters()
 
 names_mu, names_si, tr = all_names()
 
@@ -70,32 +99,21 @@ K = problem['num_vars']         #Number of parameters
 P = len(p_output)               #Number of output
 
 
-po = 0
-mu = np.loadtxt(names_mu[po])						#Import mu data
-si = np.loadtxt(names_si[po])
-
-# Plotting
-output_file("select.html")
-
-p = figure(title="simple line example", x_axis_label='x', y_axis_label='y')
-
-for i in range(K):
-	p.circle([2], [mu[0,i]], legend="Mu", line_width=2)
-	p.circle([2], [si[0,i]], legend="Sigma", line_width=2)
-
-s_functions = Select(title="Functions:", options=p_output)
-s_parametres = Select(title="Parametres:", options=problem['names'])
+mu,si = all_data()
 
 
-show(p,widgetbox(s_functions,s_parametres))
-
-# Changes of folder
 #
-#take the name of the file
-#name of the folder
+s_fun = Select(title="Functions:", value = 'C_do', options=p_output)
+s_fun.on_change('value', update)
+
 #
+s_par = Select(title="Parameteres:", value = 'k_d1', options=problem['names'])
+s_par.on_change('value', update)
 
-#Parametres
+#
+controls = widgetbox([s_fun, s_par])
+layout = row(controls,create_figure())
 
-
-#Save the informacion in a problem (dictionary)
+#
+curdoc().add_root(layout)
+curdoc().title = 'Plotting'
